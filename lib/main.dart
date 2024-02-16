@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:intl/intl.dart'; // Add this import for formatting timestamps
 
 void main() {
   runApp(MyApp());
@@ -10,129 +11,201 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      title: 'Weather App',
       debugShowCheckedModeBanner: false,
-      home: WeatherApp(),
+      home: MyHomePage(),
     );
   }
 }
 
-class WeatherApp extends StatefulWidget {
+class MyHomePage extends StatefulWidget {
   @override
-  _WeatherAppState createState() => _WeatherAppState();
+  _MyHomePageState createState() => _MyHomePageState();
 }
 
-class _WeatherAppState extends State<WeatherApp> {
+
+class _MyHomePageState extends State<MyHomePage> {
   TextEditingController gatewayIdController = TextEditingController();
   TextEditingController nodeIdController = TextEditingController();
-  TextEditingController startDateController = TextEditingController();
-  TextEditingController endDateController = TextEditingController();
+  TextEditingController startTimeController = TextEditingController();
+  TextEditingController endTimeController = TextEditingController();
 
-  DateTime? selectedStartDate = DateTime.now();
-  DateTime? selectedEndDate = DateTime.now();
+  DateTime? _selectedStartDate;
+  DateTime? _selectedEndDate;
+  int? _epochStartTime;
+  int? _epochEndTime;
 
-  Future<void> _selectDate(BuildContext context, bool isStartDate) async {
-    DateTime? picked = await showDatePicker(
+  Future<void> _selectStartDate(BuildContext context) async {
+    DateTime currentDate = DateTime.now();
+
+    DateTime? pickedDate = await showDatePicker(
       context: context,
-      initialDate: isStartDate ? selectedStartDate ?? DateTime.now() : selectedEndDate ?? DateTime.now(),
+      initialDate: _selectedStartDate ?? currentDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(2101),
     );
 
-    if (picked != null) {
-      setState(() {
-        if (isStartDate) {
-          selectedStartDate = picked;
-          startDateController.text = "${picked.toLocal()}".split(' ')[0];
-        } else {
-          selectedEndDate = picked;
-          endDateController.text = "${picked.toLocal()}".split(' ')[0];
-        }
-      });
-    }
-  }
-
-  Future<void> _selectTime(BuildContext context, bool isStartDate) async {
-    TimeOfDay? picked = await showTimePicker(
-      context: context,
-      initialTime: isStartDate
-          ? TimeOfDay.fromDateTime(selectedStartDate ?? DateTime.now())
-          : TimeOfDay.fromDateTime(selectedEndDate ?? DateTime.now()),
-    );
-
-    if (picked != null) {
-      setState(() {
-        if (isStartDate) {
-          selectedStartDate = DateTime(
-            selectedStartDate!.year,
-            selectedStartDate!.month,
-            selectedStartDate!.day,
-            picked.hour,
-            picked.minute,
-          );
-          startDateController.text = "${selectedStartDate!.toLocal()}".split(' ')[1];
-        } else {
-          selectedEndDate = DateTime(
-            selectedEndDate!.year,
-            selectedEndDate!.month,
-            selectedEndDate!.day,
-            picked.hour,
-            picked.minute,
-          );
-          endDateController.text = "${selectedEndDate!.toLocal()}".split(' ')[1];
-        }
-      });
-    }
-  }
-
-  void _navigateToFetchedData() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => FetchedData(
-          gatewayId: gatewayIdController.text,
-          nodeId: nodeIdController.text,
-          startDate: selectedStartDate!,
-          endDate: selectedEndDate!,
+    if (pickedDate != null) {
+      TimeOfDay? pickedTime = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(
+          _selectedStartDate ?? currentDate,
         ),
-      ),
+      );
+
+      if (pickedTime != null) {
+        DateTime combinedDateTime = DateTime(
+          pickedDate.year,
+          pickedDate.month,
+          pickedDate.day,
+          pickedTime.hour,
+          pickedTime.minute,
+        );
+
+        setState(() {
+          _selectedStartDate = combinedDateTime;
+          _epochStartTime = (combinedDateTime.millisecondsSinceEpoch ~/ 1000);
+          startTimeController.text =
+              DateFormat('yyyy-MM-dd HH:mm').format(combinedDateTime);
+        });
+      }
+    }
+  }
+
+  Future<void> _selectEndDate(BuildContext context) async {
+    DateTime currentDate = DateTime.now();
+
+    DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _selectedEndDate ?? currentDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
     );
+
+    if (pickedDate != null) {
+      TimeOfDay? pickedTime = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(
+          _selectedEndDate ?? currentDate,
+        ),
+      );
+
+      if (pickedTime != null) {
+        DateTime combinedDateTime = DateTime(
+          pickedDate.year,
+          pickedDate.month,
+          pickedDate.day,
+          pickedTime.hour,
+          pickedTime.minute,
+        );
+
+        setState(() {
+          _selectedEndDate = combinedDateTime;
+          _epochEndTime = (combinedDateTime.millisecondsSinceEpoch ~/ 1000);
+          endTimeController.text =
+              DateFormat('yyyy-MM-dd HH:mm').format(combinedDateTime);
+        });
+      }
+    }
+  }
+
+  void fetchData() async {
+    String nodeId = nodeIdController.text;
+    String gatewayId = gatewayIdController.text;
+    String startTime = _epochStartTime?.toString() ?? '';
+    String endTime = _epochEndTime?.toString() ?? '';
+
+    String url =
+        'https://qqvlf6v6kc.execute-api.us-east-1.amazonaws.com/v1/data?nodeId=$nodeId&gatewayId=$gatewayId&starttime=$startTime&endtime=$endTime';
+
+    final response = await http.get(Uri.parse(url));
+
+    print('API Response Code: ${response.statusCode}');
+    print('API Response Body: ${response.body}');
+
+    if (response.statusCode == 200) {
+      List<dynamic> jsonResponse = json.decode(response.body);
+      print('Decoded JSON: $jsonResponse');
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SecondPage(
+            sensorData: jsonResponse.cast<Map<String, dynamic>>(),
+          ),
+        ),
+      );
+    } else {
+      // Handle error
+      print('Failed to load data. Status code: ${response.statusCode}');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    Size screenSize = MediaQuery.of(context).size;
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('Weather App'),
+        title: Text(
+          'Weather Data',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 30,
+          ),
+        ),
       ),
-      body: Padding(
-        padding: EdgeInsets.all(16.0),
+      body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            TextField(
-              controller: gatewayIdController,
-              decoration: InputDecoration(labelText: 'Gateway ID'),
-            ),
-            TextField(
-              controller: nodeIdController,
-              decoration: InputDecoration(labelText: 'Node ID'),
-            ),
-            TextField(
-              controller: startDateController,
-              readOnly: true,
-              onTap: () => _selectDate(context, true),
-              decoration: InputDecoration(labelText: 'Start Date'),
-            ),
-            TextField(
-              controller: endDateController,
-              readOnly: true,
-              onTap: () => _selectDate(context, false),
-              decoration: InputDecoration(labelText: 'End Date'),
-            ),
-            SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () => _navigateToFetchedData(),
-              child: Text('Submit'),
+        
+            Card(
+              elevation: 5,
+              child: Container(
+                width: screenSize.width * 0.8,
+                height: screenSize.height * 0.6,
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    TextField(
+                      controller: gatewayIdController,
+                      decoration: InputDecoration(labelText: 'Enter Gateway ID'),
+                    ),
+                    TextField(
+                      controller: nodeIdController,
+                      decoration: InputDecoration(labelText: 'Enter Node ID'),
+                    ),
+                    TextField(
+                      controller: startTimeController,
+                      decoration: InputDecoration(labelText: 'Enter Start Date & Time'),
+                      onTap: () => _selectStartDate(context),
+                      readOnly: true,
+                    ),
+                    TextField(
+                      controller: endTimeController,
+                      decoration: InputDecoration(labelText: 'Enter End Date & Time'),
+                      onTap: () => _selectEndDate(context),
+                      readOnly: true,
+                    ),
+                    SizedBox(height: 16),
+                    Center(
+                      child: ElevatedButton(
+                        onPressed: fetchData,
+                        child: Text('Submit'),
+                        style: ElevatedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                          textStyle: TextStyle(fontSize: 18),
+                          primary: Colors.white,
+                          side: BorderSide(color: Colors.red, width: 2.0),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
@@ -141,76 +214,134 @@ class _WeatherAppState extends State<WeatherApp> {
   }
 }
 
-class FetchedData extends StatefulWidget {
-  final String gatewayId;
-  final String nodeId;
-  final DateTime startDate;
-  final DateTime endDate;
 
-  FetchedData({
-    required this.gatewayId,
-    required this.nodeId,
-    required this.startDate,
-    required this.endDate,
-  });
+class SecondPage extends StatelessWidget {
+  final List<Map<String, dynamic>> sensorData;
 
-  @override
-  _FetchedDataState createState() => _FetchedDataState();
-}
+  SecondPage({required this.sensorData});
 
-class _FetchedDataState extends State<FetchedData> {
-  List<Map<String, dynamic>> data = [];
-
-  @override
-  void initState() {
-    super.initState();
-    fetchData();
+  String _formatTimestamp(dynamic timestamp) {
+    int timestampValue = timestamp is String ? int.tryParse(timestamp) ?? 0 : timestamp;
+    DateTime dateTime = DateTime.fromMillisecondsSinceEpoch(timestampValue * 1000);
+    String formattedTimestamp = DateFormat('h:mm a dd/MM').format(dateTime);
+    return formattedTimestamp;
   }
 
-  Future<void> fetchData() async {
-    final response = await http.get(
-        Uri.parse('https://qqvlf6v6kc.execute-api.us-east-1.amazonaws.com/v1/data?nodeId=${widget.nodeId}&gatewayId=${widget.gatewayId}&starttime=${widget.startDate.millisecondsSinceEpoch ~/ 1000}&endtime=${widget.endDate.millisecondsSinceEpoch ~/ 1000}'));
+  String _getImageForLightIntensity(String lightIntensity) {
+    int intensityValue = int.tryParse(lightIntensity) ?? 0;
 
-    if (response.statusCode == 200) {
-      setState(() {
-        data = json.decode(response.body);
-      });
+    if (intensityValue >= 0 && intensityValue <= 2000) {
+      return 'assets/images/cloud.png';
+    } else if (intensityValue > 2000 && intensityValue <= 4000) {
+      return 'assets/images/partially_sunny.png';
     } else {
-      throw Exception('Failed to load data');
+      return 'assets/images/sunny.png';
+    }
+  }
+
+
+  String _getImageForTime(String humanTime, String lightIntensity) {
+    DateTime dateTime = DateFormat('yyyy-MM-dd hh:mm a').parse(humanTime);
+    int intensityValue = int.tryParse(lightIntensity) ?? 0;
+
+    // Check if the time is between 8:00 PM and 5:00 AM
+    if (dateTime.hour >= 20 || dateTime.hour < 5) {
+      return 'assets/images/moon.png';
+    } else {
+      if (intensityValue >= 0 && intensityValue <= 2000) {
+        return 'assets/images/cloud.png';
+      } else if (intensityValue > 2000 && intensityValue <= 4000) {
+        return 'assets/images/partially_sunny.png';
+      } else {
+        return 'assets/images/sunny.png';
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    sensorData.sort((a, b) => b["timestamp"].compareTo(a["timestamp"]));
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('Fetched Data'),
+        title: Text('Fetched Data',
+          style: TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 30, // Adjust the font size as needed
+        ),),
       ),
       body: Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Card(
-          elevation: 5,
-          child: Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.start,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Temperature: ${data.isNotEmpty ? data[0]['temperature'] : 'N/A'}'),
-                        Text('Humidity: ${data.isNotEmpty ? data[0]['humidity'] : 'N/A'}'),
-                        Text('CO2: ${data.isNotEmpty ? data[0]['co2'] : 'N/A'}'),
-                        Text('Timestamp: ${data.isNotEmpty ? data[0]['timestamp'] : 'N/A'}'),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '  ',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
-          ),
+            Expanded(
+              child:
+
+
+
+              ListView.builder(
+                itemCount: sensorData.length,
+                itemBuilder: (context, index) {
+                  String timeImage = _getImageForTime(sensorData[index]["human_time"], sensorData[index]["co2"]);
+
+                  return Card(
+                    elevation: 5,
+                    margin: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                    color: index == 0 ? Colors.greenAccent : null,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Humidity: ${sensorData[index]["humidity"]}%',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  'Co2: ${sensorData[index]["co2"]}',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  'Temperature: ${sensorData[index]["temperature"]}℃',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  'Timestamp: ${_formatTimestamp(sensorData[index]["timestamp"])}',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            height: 100, // Set your desired height
+                            width: 100, // Set your desired width
+                            //child: Image.asset(timeImage),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+
+
+            ),
+          ],
         ),
       ),
     );
